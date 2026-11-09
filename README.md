@@ -62,6 +62,8 @@ exchange restarts it), so an abandoned session doesn't drip-bill forever.
 > no re-arm tool call, no permission prompt, and one request per beat instead of two. **Upgrading?**
 > Copy both files again (see [Install](#install)), then run `/cachebeat` once in each session you want
 > covered. A session still running the old instructions stops at its next re-arm instead of looping.
+> A session already armed by an earlier hook-based version is migrated at its next turn end, from
+> its latest `/cachebeat`.
 
 ## Install
 
@@ -87,9 +89,12 @@ Requirements: a recent Claude Code (tested on 2.1.288) with hooks enabled — sk
 ```
 /cachebeat            # fire after 50 min of inactivity, auto-stop after 3 h without activity
 /cachebeat 40         # custom idle threshold in minutes (clamped to 5–55)
-/cachebeat 40 4       # custom threshold + auto-stop after 4 h without activity
+/cachebeat 40 4       # custom threshold + auto-stop after 4 h without activity (whole hours, 1–24)
 /cachebeat stop       # stop it
 ```
+
+Arguments are whole numbers: anything after the leading digits is ignored (`1.5` means 1 h, `40m` means
+40 min), and an hours value can also be written as `4h`.
 
 You can also just ask Claude ("keep the cache warm while this trains") — it invokes the skill for you.
 
@@ -126,7 +131,8 @@ and shows it what the hook printed:
 
 1. A turn ends → the Stop hook starts a timer (and any older timer notices and exits).
 2. Every 30 s the timer checks **when the last real model response was written** to the session
-   transcript (`~/.claude/projects/<slug>/<session-id>.jsonl`). A new response resets the clock.
+   transcript (`~/.claude/projects/<slug>/<session-id>.jsonl`), re-reading it only when it has grown.
+   A new response resets the clock and pushes the auto-stop back to `<hours>` from now.
 3. After N idle minutes it prints a one-line heartbeat note and exits 2 → Claude wakes, reads the
    conversation from cache (that read *is* the heartbeat), and answers `.`.
 4. That reply ends a turn → step 1. Claude never re-arms anything.
@@ -138,7 +144,8 @@ while :; do
   sleep 30
   [ "$(cat "$S.pid")" = $$ ] || exit 0                  # a newer turn started a newer timer
   scan                                                  # the last real model response, when the transcript grew
-  [ "$SIG" != "$PREV" ] && { PREV=$SIG; LAST=$NOW; }    # new request -> reset the clock
+  refuse_short_ttl                                      # 5-minute cache writes -> stop and tell the user
+  [ "$SIG" != "$PREV" ] && { PREV=$SIG; LAST=$NOW; extend; }   # new request -> reset the clock and the auto-stop
   IDLE=$((NOW - LAST))
   [ "$IDLE" -ge $((N*60)) ] && { echo "idle heartbeat …" >&2; exit 2; }   # exit 2 wakes Claude
 done
@@ -158,6 +165,10 @@ Details that keep it honest:
   `$TMPDIR/cachebeat-<session-id>`. Invoking `/cachebeat` again re-arms with the new values; `/cachebeat
   stop` disarms. The match is on raw JSON structure, so a transcript that merely *quotes* those lines
   (say, while debugging cachebeat) can't arm it.
+- **A state file a status line can read.** `$TMPDIR/cachebeat-<session-id>` is one line:
+  `<arm id> <minutes> <auto-stop epoch> <hours>`, plus `<newest reply> <beat epoch>` right after a beat,
+  or `<arm id> stop` when it is off. `cachebeat-<session-id>.pid` holds the newest timer's PID, so
+  `kill -0` on it tells whether a timer is running right now.
 - **Only real requests count as activity.** Claude Code also appends lines without any model request —
   `queue-operation` entries when a Workflow's agents finish background commands, `mode`,
   `away_summary`, its own `"model":"<synthetic>"` notices for usage limits and API errors. Those don't
