@@ -1,6 +1,6 @@
 ---
 name: cachebeat
-description: Keep the Anthropic prompt cache warm by firing a tiny heartbeat only after N minutes of true session inactivity (any exchange resets the clock), so the next real turn reads the conversation at cached price / cached quota instead of a full uncached re-read. The heartbeat is a background Stop hook this skill registers (asyncRewake) - it re-arms itself after every turn, with no tool calls and no permission prompts. Use when the session may sit idle (training runs, CI, downloads, the user stepping away) longer than the cache TTL. Args - idle threshold in minutes (default 50), optional max hours (default 8), or "stop".
+description: Keep the Anthropic prompt cache warm by firing a tiny heartbeat only after N minutes of true session inactivity (any exchange resets the clock), so the next real turn reads the conversation at cached price / cached quota instead of a full uncached re-read. The heartbeat is a background Stop hook this skill registers (asyncRewake) - it re-arms itself after every turn, with no tool calls and no permission prompts. Use when the session may sit idle (training runs, CI, downloads, the user stepping away) longer than the cache TTL. Args - idle threshold in minutes (default 50), optional max hours (default 3), or "stop".
 hooks:
   Stop:
     - hooks:
@@ -27,7 +27,7 @@ when this skill loaded, and when this turn ends the hook reads these same argume
 
 - `minutes`: idle threshold — how long the session may sit silent before a beat. Default **50**,
   clamped to **5–55** (past ~55 the 1-hour cache TTL can lapse before a beat lands).
-- `hours`: auto-stop deadline. Default **8**, clamped to 1–24 — the abandoned-session guard: every beat
+- `hours`: auto-stop deadline. Default **3**, clamped to 1–24 — the abandoned-session guard: every beat
   costs a small cached-price request, so a forgotten heartbeat must end itself.
 - `stop` (or `off`): disarm.
 

@@ -51,7 +51,7 @@ wakes, answers with a single `.`, and the cache TTL restarts. The next timer sta
 even once and the heartbeat has paid for itself many times over — and the bigger the session, the
 bigger the absolute savings (the 10× ratio is flat; the token count isn't).
 
-It also kills itself after a deadline (default 8 h), so an abandoned session doesn't drip-bill forever.
+It also kills itself after a deadline (default 3 h), so an abandoned session doesn't drip-bill forever.
 
 > **Note (Oct 2026):** Claude Code 2.1.285 put a lifetime on background shell commands (30 min by
 > default, 2 h at most) and tells Claude not to restart one that hit the 2 h cap. The previous
@@ -84,7 +84,7 @@ Requirements: a recent Claude Code (tested on 2.1.288) with hooks enabled — sk
 ## Usage
 
 ```
-/cachebeat            # fire after 50 min of inactivity, auto-stop after 8 h
+/cachebeat            # fire after 50 min of inactivity, auto-stop after 3 h
 /cachebeat 40         # custom idle threshold in minutes (clamped to 5–55)
 /cachebeat 40 4       # custom threshold + auto-stop after 4 h
 /cachebeat stop       # stop it
@@ -136,7 +136,7 @@ The heart of it:
 while :; do
   sleep 30
   [ "$(cat "$S.pid")" = $$ ] || exit 0                  # a newer turn started a newer timer
-  SIG=$(sig "$(last_resp)")                             # the last real model response
+  scan                                                  # the last real model response, when the transcript grew
   [ "$SIG" != "$PREV" ] && { PREV=$SIG; LAST=$NOW; }    # new request -> reset the clock
   IDLE=$((NOW - LAST))
   [ "$IDLE" -ge $((N*60)) ] && { echo "idle heartbeat …" >&2; exit 2; }   # exit 2 wakes Claude
@@ -191,7 +191,7 @@ Details that keep it honest:
 
 ## Compatibility
 
-Linux, WSL2, and macOS. The watcher uses only portable tools — `tail`, `grep`, `sed`, `cut`, `tr`,
+Linux, WSL2, and macOS. The watcher uses only portable tools — `tail`, `grep`, `sed`, `cut`, `tr`, `wc`,
 `date +%s` — with no `stat`, no `jq` and no timestamp parsing, so there are no GNU-vs-BSD differences to
 trip over (tested with bash-as-`sh`, dash and ksh). Native Windows (non-WSL) is untested — the watcher
 assumes a POSIX shell.
