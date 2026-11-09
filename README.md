@@ -51,7 +51,8 @@ wakes, answers with a single `.`, and the cache TTL restarts. The next timer sta
 even once and the heartbeat has paid for itself many times over — and the bigger the session, the
 bigger the absolute savings (the 10× ratio is flat; the token count isn't).
 
-It also kills itself after a deadline (default 3 h), so an abandoned session doesn't drip-bill forever.
+It also kills itself after a stretch without activity (default 3 h; its own beats don't count, any real
+exchange restarts it), so an abandoned session doesn't drip-bill forever.
 
 > **Note (Oct 2026):** Claude Code 2.1.285 put a lifetime on background shell commands (30 min by
 > default, 2 h at most) and tells Claude not to restart one that hit the 2 h cap. The previous
@@ -84,9 +85,9 @@ Requirements: a recent Claude Code (tested on 2.1.288) with hooks enabled — sk
 ## Usage
 
 ```
-/cachebeat            # fire after 50 min of inactivity, auto-stop after 3 h
+/cachebeat            # fire after 50 min of inactivity, auto-stop after 3 h without activity
 /cachebeat 40         # custom idle threshold in minutes (clamped to 5–55)
-/cachebeat 40 4       # custom threshold + auto-stop after 4 h
+/cachebeat 40 4       # custom threshold + auto-stop after 4 h without activity
 /cachebeat stop       # stop it
 ```
 
@@ -98,8 +99,8 @@ You don't have to take it on faith — you can watch the cache stay warm.
 
 - **The heartbeat itself.** When a beat fires you'll see a `⏺ cachebeat heartbeat` line and Claude
   answering `.` — proof the timer is alive and resetting the TTL. If instead Claude tells you
-  cachebeat stopped itself, the beat fired on schedule but the cache had *still* expired: your
-  session's TTL is too short for any heartbeat to bridge.
+  cachebeat stopped itself, your session is on the 5-minute TTL, or the beat fired on schedule but
+  the cache had *still* expired: either way, the TTL is too short for any heartbeat to bridge.
 - **The status line.** Claude Code's token readout looks like `tok:312.0k/0.0k` — *total / served
   from cache*. When you return to an idle session, the second number should be a large fraction of
   the first (warm). If it reads `…/0.0k`, the whole context was re-read uncached — the cache had
@@ -147,8 +148,8 @@ done
 |---|---|---|
 | `0` | nothing to say: not armed, stopped, superseded, or the cache is already cold | nothing — no wake-up |
 | `2` + "idle heartbeat" | the session sat idle for the threshold | replies `.` (the reply's turn starts the next timer) |
-| `2` + "stopped itself" | the last beat *still* came back uncached — TTL too short to bridge | tells you, stays off |
-| `2` + "auto-stop" | the deadline passed | tells you, stays off |
+| `2` + "stopped itself" | a reply wrote 5-minute-TTL cache, or the last beat *still* came back uncached — TTL too short to bridge | tells you, stays off |
+| `2` + "auto-stop" | no activity for the auto-stop hours (beats don't count) | tells you, stays off |
 
 Details that keep it honest:
 
@@ -164,9 +165,14 @@ Details that keep it honest:
   old watcher from ever firing while the cache died).
 - **Never mid-tool.** While a tool is still running (or waiting on a permission prompt), the timer
   doesn't fire: a wake-up couldn't be delivered before the tool returns anyway.
+- **1-hour TTL only.** Every timer reads the cache writes of the latest replies; as soon as they are
+  5-minute-TTL writes (a session on the short TTL, or one that dropped to it), it stops and tells you.
 - **Every beat is audited.** After a beat, the next timer reads that beat's own usage record. A large
-  `cache_creation` (or 5-minute-TTL cache writes) means the cache had already expired, so it stops
-  and tells you instead of pretending to help.
+  `cache_creation` means the cache had already expired, so it stops and tells you instead of
+  pretending to help.
+- **The auto-stop follows you.** The deadline is `<hours>` after the latest real request or running
+  tool, rewritten to the state file whenever that moves; a beat and its `.` reply leave it alone, so a
+  session you walked away from stops `<hours>` after you left.
 - **No beat into a cold cache.** If the machine slept past the TTL, the cache is already gone and a beat
   would only pay to rebuild it — the timer stands down until you're back.
 - **No beat into the wrong conversation.** A wake-up goes to the Claude Code process, not to a session,
@@ -174,7 +180,7 @@ Details that keep it honest:
   it can beat into the next conversation. If Claude Code dies outright, the timer notices its parent is
   gone and exits.
 - **The hook's `timeout` matters.** Claude Code kills an `asyncRewake` hook at its `timeout` — 10 minutes
-  unless set — so the skill sets `timeout: 90000` (25 h, past the longest deadline). Without it every
+  unless set — so the skill sets `timeout: 90000` (25 h, past the longest auto-stop). Without it every
   timer would die before a 50-minute beat, which is the old failure all over again.
 - **Nothing on stderr but the note.** On exit 2, Claude sees everything the hook wrote to stderr; the
   script sends all other stderr to `/dev/null` so stray errors can't leak into the conversation.
@@ -201,8 +207,9 @@ rather than a documented API, so a future Claude Code change could require an up
 
 ## Honest caveats
 
-- **Only helps on sessions with the long (1-hour) cache TTL.** Some sessions run a 5-minute TTL; no
-  practical heartbeat can bridge that. cachebeat detects it on the first beat and stops itself.
+- **Only works on sessions with the long (1-hour) cache TTL.** Some sessions run a 5-minute TTL (or
+  drop to it, e.g. in usage overage); no practical heartbeat can bridge that. cachebeat reads it from
+  the replies' cache writes and stops itself.
 - Each beat costs one small cached-read request plus a few output tokens, and each beat's exchange is
   appended to the context that later requests re-read. Cheap, not free.
 - **Resuming a session** (`claude --resume`) doesn't bring the hook back — run `/cachebeat` again.
@@ -213,7 +220,7 @@ rather than a documented API, so a future Claude Code change could require an up
 - The idle threshold must stay **under** the TTL — the default 50 min leaves ~10 min of margin
   against the 1-hour TTL.
 - If you're *not* coming back to the session, any heartbeat is pure waste. That's what the
-  auto-stop deadline is for.
+  auto-stop is for.
 
 ## License
 
