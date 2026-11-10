@@ -115,7 +115,9 @@ scan; refuse_short_ttl; PREV=$SIG; LAST=$(date +%s)
 while :; do
   sleep "$TICK"
   [ "$(cat "$S.pid")" = $$ ] || { log "superseded"; exit 0; }
-  kill -0 "$PPID" || { log "Claude Code is gone"; exit 0; }
+  # Git Bash / MSYS reports PPID=1 when the parent is a native Windows process (Claude Code), so
+  # there is no parent to watch there; SessionEnd, the .pid file and the auto-stop still apply.
+  [ "$PPID" = 1 ] || kill -0 "$PPID" || { log "Claude Code is gone"; exit 0; }
   { read -r ID2 N END _; } < "$S"
   [ "$ID2" = "$ID" ] || { log "re-armed or stopped"; exit 0; }
   case "$N$END" in ''|*[!0-9]*) log "stopped"; exit 0 ;; esac

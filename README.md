@@ -168,7 +168,11 @@ Details that keep it honest:
 - **A state file a status line can read.** `$TMPDIR/cachebeat-<session-id>` is one line:
   `<arm id> <minutes> <auto-stop epoch> <hours>`, plus `<newest reply> <beat epoch>` right after a beat,
   or `<arm id> stop` when it is off. `cachebeat-<session-id>.pid` holds the newest timer's PID, so
-  `kill -0` on it tells whether a timer is running right now.
+  `kill -0` on it tells whether a timer is running right now. `$TMPDIR` means the hook's own (unset →
+  `/tmp`): on Git Bash, login shells get `TMPDIR=$TMP` from `/etc/profile` while hooks and status lines
+  don't, so look in `/tmp` there (`C:\Users\<you>\AppData\Local\Temp`), not in a login shell's
+  `$TMPDIR`. The file appears as the arming turn ends, so a status line may only show it from its next
+  refresh.
 - **Only real requests count as activity.** Claude Code also appends lines without any model request —
   `queue-operation` entries when a Workflow's agents finish background commands, `mode`,
   `away_summary`, its own `"model":"<synthetic>"` notices for usage limits and API errors. Those don't
@@ -189,7 +193,8 @@ Details that keep it honest:
 - **No beat into the wrong conversation.** A wake-up goes to the Claude Code process, not to a session,
   so the skill also registers a `SessionEnd` hook: `/clear`, `/resume` and exit disarm the timer before
   it can beat into the next conversation. If Claude Code dies outright, the timer notices its parent is
-  gone and exits.
+  gone and exits (except on native Windows, where Git Bash can't see a native parent process: there an
+  orphaned timer just runs out at its auto-stop, with nobody left to wake).
 - **The hook's `timeout` matters.** Claude Code kills an `asyncRewake` hook at its `timeout` — 10 minutes
   unless set — so the skill sets `timeout: 90000` (25 h, past the longest auto-stop). Without it every
   timer would die before a 50-minute beat, which is the old failure all over again.
@@ -208,10 +213,16 @@ Details that keep it honest:
 
 ## Compatibility
 
-Linux, WSL2, and macOS. The watcher uses only portable tools — `tail`, `grep`, `sed`, `cut`, `tr`, `wc`,
+Linux, WSL2, macOS, and native Windows with Git Bash (Git for Windows, which Claude Code uses to run
+hooks there). The watcher uses only portable tools — `tail`, `grep`, `sed`, `cut`, `tr`, `wc`,
 `date +%s` — with no `stat`, no `jq` and no timestamp parsing, so there are no GNU-vs-BSD differences to
-trip over (tested with bash-as-`sh`, dash and ksh). Native Windows (non-WSL) is untested — the watcher
-assumes a POSIX shell.
+trip over (tested with bash-as-`sh`, dash, ksh, and Git Bash 5.3 on Windows 11).
+
+On Windows the hook gets `C:\…` transcript paths, which Git Bash opens as they are, and its state files
+land in Git Bash's `/tmp` (see the state-file note above for why a login shell's `$TMPDIR` differs). The repository's
+`.gitattributes` keeps `beat.sh` on LF line endings even with `core.autocrlf=true`, so a copy made from
+a Windows checkout also runs in WSL or Linux. A native Windows shell (cmd or PowerShell without Git Bash)
+can't run the watcher.
 
 It reads Claude Code's session transcript (the path comes from the hook's input) — an internal format
 rather than a documented API, so a future Claude Code change could require an update here.
