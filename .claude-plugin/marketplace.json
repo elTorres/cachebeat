@@ -1,0 +1,15 @@
+{
+  "name": "cachebeat",
+  "description": "cachebeat: prompt-cache keepalive heartbeat for Claude Code",
+  "owner": {
+    "name": "elTorres",
+    "url": "https://github.com/elTorres"
+  },
+  "plugins": [
+    {
+      "name": "cachebeat",
+      "source": "./",
+      "description": "Keep the prompt cache warm while a session sits idle: an inactivity-triggered heartbeat run as a background Stop hook."
+    }
+  ]
+}

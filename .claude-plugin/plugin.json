@@ -1,0 +1,12 @@
+{
+  "name": "cachebeat",
+  "description": "Keep the Anthropic prompt cache warm with an inactivity-triggered heartbeat, so an idle session's next turn reads the conversation at cached price instead of a full uncached re-read.",
+  "author": {
+    "name": "Abdur Rahim",
+    "url": "https://github.com/ARahim3"
+  },
+  "homepage": "https://github.com/elTorres/cachebeat",
+  "repository": "https://github.com/elTorres/cachebeat",
+  "license": "MIT",
+  "keywords": ["prompt-cache", "cache", "heartbeat", "keepalive", "hooks"]
+}

@@ -67,6 +67,28 @@ exchange restarts it), so an abandoned session doesn't drip-bill forever.
 
 ## Install
 
+### As a plugin (recommended)
+
+The repository is its own plugin marketplace, so Claude Code can install it straight from GitHub. In a
+session:
+
+```
+/plugin install cachebeat --marketplace elTorres/cachebeat
+```
+
+That one-step form needs Claude Code 2.1.275 or later. On any version, or from your shell:
+
+```bash
+claude plugin marketplace add elTorres/cachebeat
+claude plugin install cachebeat@cachebeat
+```
+
+Updates arrive with `claude plugin update cachebeat` (or `/plugin`), and `claude plugin uninstall
+cachebeat` removes it. As a plugin skill it is invoked as `/cachebeat:cachebeat` (the plugin name is the
+prefix); the hook recognizes both forms, so everything below that says `/cachebeat` applies unchanged.
+
+### By hand
+
 User-level (all projects):
 
 ```bash
@@ -79,6 +101,9 @@ Or project-level: copy both files into `<your-project>/.claude/skills/cachebeat/
 That's the whole setup — two small files: the skill, and the watcher script its hook runs. Then in any
 Claude Code session, type `/cachebeat` and you're done. There is nothing to approve: hooks don't ask
 for permission, and Claude never runs a command for it.
+
+Use one install method, not both: switching to the plugin? Delete `~/.claude/skills/cachebeat` first, or
+both copies register the same hook.
 
 Requirements: a recent Claude Code (tested on 2.1.288) with hooks enabled — skill-frontmatter hooks and
 `asyncRewake` are standard features, but an organization policy that disables hooks
